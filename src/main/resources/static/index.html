@@ -35,9 +35,23 @@
     .ticker-track { display:flex; gap:1rem; transition: transform 0.6s cubic-bezier(.22,.9,.3,1); }
 
     .modal-backdrop { background: rgba(0,0,0,0.45); backdrop-filter: blur(3px); }
+
+    /* Spinner */
+    .spinner {
+      width: 1rem;
+      height: 1rem;
+      border: 2px solid transparent;
+      border-top-color: currentColor;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
   </style>
 </head>
-<body class="min-h-screen bg-gradient-to-b from-emerald-50 to-indigo-50 dark:from-slate-900 dark:to-slate-800 text-slate-900 dark:text-slate-100">
+<body class="min-h-screen text-slate-900 dark:text-slate-100">
   <div class="max-w-6xl mx-auto p-4 sm:p-6">
 
     <!-- Header -->
@@ -83,24 +97,22 @@
           <div class="text-xs text-slate-400">Auto-updates every minute</div>
         </div>
 
-        <div class="w-full">
-          <div class="ticker-container relative overflow-hidden">
-            <div class="ticker-track" :style="`transform: translateX(-${tickerIndex * (100 / visibleCount)}%) ; width: ${ (cards.length * 100) / visibleCount }%`">
-              <template x-for="(card, idx) in cards" :key="card.city">
-                <div class="p-3" :style="`width: ${100 / visibleCount}%`">
-                  <div class="glass p-4 rounded-xl shadow-sm flex items-center gap-3">
-                    <div class="w-12 h-12 rounded-lg bg-emerald-100 dark:bg-emerald-900 flex items-center justify-center text-emerald-700 dark:text-emerald-200 font-bold">
-                      <span x-text="card.city.charAt(0)"></span>
-                    </div>
-                    <div>
-                      <div class="font-semibold" x-text="card.city"></div>
-                      <div class="text-xs text-slate-500 dark:text-slate-400" x-text="card.summary"></div>
-                      <div class="text-sm font-mono text-slate-700 dark:text-slate-200 mt-1">PM2.5: <span x-text="card.pm || '—'"></span></div>
-                    </div>
+        <div class="w-full overflow-hidden">
+          <div class="ticker-track" :style="`transform: translateX(-${tickerIndex * 100}%) ; width: ${cards.length * 100}%`">
+            <template x-for="(card, idx) in cards" :key="card.city">
+              <div class="min-w-full p-3">
+                <div class="glass p-4 rounded-xl shadow-sm flex items-center gap-3">
+                  <div class="w-12 h-12 rounded-lg bg-emerald-100 dark:bg-emerald-900 flex items-center justify-center text-emerald-700 dark:text-emerald-200 font-bold">
+                    <span x-text="card.city.charAt(0)"></span>
+                  </div>
+                  <div>
+                    <div class="font-semibold" x-text="card.city"></div>
+                    <div class="text-xs text-slate-500 dark:text-slate-400" x-text="card.summary"></div>
+                    <div class="text-sm font-mono text-slate-700 dark:text-slate-200 mt-1">PM2.5: <span x-text="card.pm ?? '—'"></span></div>
                   </div>
                 </div>
-              </template>
-            </div>
+              </div>
+            </template>
           </div>
         </div>
       </div>
@@ -109,11 +121,20 @@
     <!-- Main Content -->
     <main class="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
       <section class="md:col-span-2 relative rounded-xl overflow-hidden">
+        <!-- Forest image; easy to swap: change the `forestSrc` variable in the script -->
         <img :src="forestSrc" id="forestImage" alt="Forest" class="w-full h-96 object-cover transition duration-500" :class="forestClasses">
 
+        <!-- Prediction card overlay -->
         <div class="absolute left-6 top-6">
-          <div class="glass p-4 rounded-lg shadow-lg max-w-xs">
-            <div class="flex items-center justify-between gap-3">
+          <div class="glass p-4 rounded-lg shadow-lg max-w-xs relative">
+            <div x-show="loadingPrediction" x-cloak class="absolute inset-0 bg-black/30 flex items-center justify-center rounded-lg">
+              <div class="flex items-center gap-3 text-white">
+                <div class="spinner"></div>
+                <div>Calculating AI Prediction...</div>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between gap-3 opacity-90">
               <div>
                 <div class="text-xs text-slate-400">Current Prediction</div>
                 <div class="text-2xl font-semibold">
@@ -204,13 +225,9 @@
         theme: localStorage.getItem('layhtu-theme') || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'),
         openSettings: false,
 
-        cards: [
-          { city: 'Yangon', summary: 'Urban centre', pm: null },
-          { city: 'Mandalay', summary: 'Inland region', pm: null },
-          { city: 'Naypyidaw', summary: 'Capital area', pm: null }
-        ],
+        // dynamic city cards will be fetched from backend
+        cards: [],
         tickerIndex: 0,
-        visibleCount: 1,
 
         prediction: null,
         lastUpdated: '--',
@@ -218,6 +235,7 @@
         forestSrc: 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=1400&q=60',
         chatInput: '',
         openChat: false,
+        loadingPrediction: false,
 
         get predictionDisplay() {
           if (this.prediction === null) return '—';
@@ -251,13 +269,21 @@
         },
 
         init() {
+          // apply theme and update CSS vars
           this.applyTheme();
 
-          setInterval(() => { this.tickerIndex = (this.tickerIndex + 1) % this.cards.length; }, 3500);
+          // start ticker autoplay
+          setInterval(() => {
+            if (this.cards.length > 0) this.tickerIndex = (this.tickerIndex + 1) % this.cards.length;
+          }, 3500);
+
+          // initial load
+          this.fetchAllCities();
           this.fetchPrediction();
+
+          // periodic refresh
+          setInterval(() => this.fetchAllCities(), 60_000);
           setInterval(() => this.fetchPrediction(), 60_000);
-          setInterval(() => this._updateMockCityPm(), 15000);
-          this._updateMockCityPm();
         },
 
         setTheme(t) {
@@ -267,14 +293,51 @@
         },
 
         applyTheme() {
-          if (this.theme === 'dark') document.documentElement.classList.add('dark'); else document.documentElement.classList.remove('dark');
+          if (this.theme === 'dark') {
+            document.documentElement.classList.add('dark');
+            document.documentElement.style.setProperty('--bg-from', '#0f172a');
+            document.documentElement.style.setProperty('--bg-to', '#071133');
+            document.documentElement.style.setProperty('--card-bg', 'rgba(10,10,10,0.36)');
+            document.documentElement.style.setProperty('--card-border', 'rgba(255,255,255,0.03)');
+          } else {
+            document.documentElement.classList.remove('dark');
+            document.documentElement.style.setProperty('--bg-from', '#ecfdf5');
+            document.documentElement.style.setProperty('--bg-to', '#eef2ff');
+            document.documentElement.style.setProperty('--card-bg', 'rgba(255,255,255,0.06)');
+            document.documentElement.style.setProperty('--card-border', 'rgba(255,255,255,0.06)');
+          }
         },
 
+        // Fetch slider/city data from backend
+        async fetchAllCities() {
+          try {
+            const res = await fetch('/api/v1/weather/cities', { headers: { 'Accept': 'application/json' } });
+            if (!res.ok) throw new Error('Cities endpoint not available');
+            const data = await res.json();
+            if (Array.isArray(data) && data.length > 0) {
+              this.cards = data.map(c => ({ city: c.city || 'Unknown', summary: c.summary || '', pm: c.pm ?? null }));
+              this.statusMessage = 'City data updated';
+              return;
+            }
+            throw new Error('Invalid city data');
+          } catch (err) {
+            console.warn('fetchAllCities failed, using demo data', err);
+            this.cards = [
+              { city: 'Yangon', summary: 'Urban centre', pm: Math.round(12 + Math.random() * 30) },
+              { city: 'Mandalay', summary: 'Inland region', pm: Math.round(10 + Math.random() * 35) },
+              { city: 'Naypyidaw', summary: 'Capital area', pm: Math.round(8 + Math.random() * 28) }
+            ];
+            this.statusMessage = 'City data (demo)';
+          }
+        },
+
+        // Primary prediction call
         async fetchPrediction() {
-          this.statusMessage = 'Fetching prediction...';
+          this.loadingPrediction = true;
+          this.statusMessage = 'Calculating AI Prediction...';
           try {
             const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 18_000);
+            const timeout = setTimeout(() => controller.abort(), 19_000);
             const res = await fetch('/api/v1/weather/predict', { signal: controller.signal, headers: { 'Accept': 'application/json' } });
             clearTimeout(timeout);
             if (!res.ok) { this._onFetchError(); return; }
@@ -287,7 +350,10 @@
               this._onFetchError();
             }
           } catch (err) {
+            console.warn('fetchPrediction error', err);
             this._onFetchError(err);
+          } finally {
+            this.loadingPrediction = false;
           }
         },
 
@@ -295,8 +361,6 @@
           if (err) console.warn('Fetch prediction error:', err);
           if (this.prediction === null) this.statusMessage = 'Data gathering in progress...'; else this.statusMessage = 'Prediction temporarily unavailable';
         },
-
-        _updateMockCityPm() { this.cards = this.cards.map(c => ({ ...c, pm: Math.round(8 + Math.random() * 60) })); },
 
         sendChat() { if (!this.chatInput.trim()) return; alert('Chatbot demo: ' + this.chatInput); this.chatInput = ''; }
       };
