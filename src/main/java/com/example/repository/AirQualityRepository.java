@@ -10,5 +10,7 @@ import java.util.List;
 public interface AirQualityRepository extends MongoRepository<AirQualityReading, String> {
     // Find the most recent readings ordered by timestamp descending; callers may limit to 24
     List<AirQualityReading> findAllByOrderByTimestampDesc();
-}
 
+    // Return the top 24 most recent readings (newest first)
+    List<AirQualityReading> findTop24ByOrderByTimestampDesc();
+}

@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="my" x-data="layHtuApp()" x-init="init()" :class="{ 'dark': theme === 'dark' }">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>လေထု (Lay Htu) — AI Weather</title>
+
+  <!-- Tailwind CDN with dark mode class strategy -->
+  <script>
+    window.tailwind = { config: { darkMode: 'class' } };
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Alpine.js -->
+  <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+  <style>
+    :root {
+      --forest-src: url('https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=1400&q=60');
+    }
+
+    .glass {
+      background: rgba(255,255,255,0.06);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .glass-dark {
+      background: rgba(10,10,10,0.36);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.03);
+    }
+
+    .ticker-track { display:flex; gap:1rem; transition: transform 0.6s cubic-bezier(.22,.9,.3,1); }
+
+    .modal-backdrop { background: rgba(0,0,0,0.45); backdrop-filter: blur(3px); }
+  </style>
+</head>
+<body class="min-h-screen bg-gradient-to-b from-emerald-50 to-indigo-50 dark:from-slate-900 dark:to-slate-800 text-slate-900 dark:text-slate-100">
+  <div class="max-w-6xl mx-auto p-4 sm:p-6">
+
+    <!-- Header -->
+    <header class="flex items-center justify-between mb-6">
+      <div class="flex items-center gap-3">
+        <div class="text-3xl font-extrabold">လေထု <span class="text-lg font-medium text-slate-500 dark:text-slate-300"> (Lay Htu)</span></div>
+        <div class="text-sm text-slate-500 dark:text-slate-400">AI Weather & Air Quality</div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <button @click="openSettings = !openSettings" aria-label="Settings" class="p-2 rounded-md hover:bg-slate-200/40 dark:hover:bg-white/5 transition-colors">
+          <svg class="w-6 h-6 text-slate-700 dark:text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 15.5a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82L4.21 4.21a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33H11a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09c.12.7.62 1.26 1.31 1.51a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V11c.49.17.94.44 1.32.8z"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Settings Popup -->
+    <div x-show="openSettings" x-cloak x-transition class="fixed right-4 top-20 z-40 w-64 p-4 rounded-xl glass dark:glass-dark shadow-lg">
+      <div class="flex items-center justify-between mb-2">
+        <div class="font-semibold">Settings</div>
+        <button @click="openSettings = false" aria-label="Close" class="text-slate-500 hover:text-slate-700 dark:hover:text-slate-200">✕</button>
+      </div>
+
+      <div class="mt-2">
+        <div class="text-sm mb-2">Theme</div>
+        <div class="flex items-center gap-3">
+          <button @click="setTheme('light')" :class="theme==='light' ? 'ring-2 ring-primary/60' : ''" class="px-3 py-1 rounded-md bg-white dark:bg-slate-700/60">Light</button>
+          <button @click="setTheme('dark')" :class="theme==='dark' ? 'ring-2 ring-primary/60' : ''" class="px-3 py-1 rounded-md bg-white dark:bg-slate-700/60">Dark</button>
+        </div>
+      </div>
+
+      <div class="mt-4 text-xs text-slate-400">Tip: Change the main forest image by editing the <code>forestSrc</code> variable in the script.</div>
+    </div>
+
+    <!-- Top slider / ticker -->
+    <div class="mb-6">
+      <div class="relative overflow-hidden">
+        <div class="flex items-center justify-between mb-3">
+          <div class="text-sm font-medium text-slate-600 dark:text-slate-300">Cities</div>
+          <div class="text-xs text-slate-400">Auto-updates every minute</div>
+        </div>
+
+        <div class="w-full">
+          <div class="ticker-container relative overflow-hidden">
+            <div class="ticker-track" :style="`transform: translateX(-${tickerIndex * (100 / visibleCount)}%) ; width: ${ (cards.length * 100) / visibleCount }%`">
+              <template x-for="(card, idx) in cards" :key="card.city">
+                <div class="p-3" :style="`width: ${100 / visibleCount}%`">
+                  <div class="glass p-4 rounded-xl shadow-sm flex items-center gap-3">
+                    <div class="w-12 h-12 rounded-lg bg-emerald-100 dark:bg-emerald-900 flex items-center justify-center text-emerald-700 dark:text-emerald-200 font-bold">
+                      <span x-text="card.city.charAt(0)"></span>
+                    </div>
+                    <div>
+                      <div class="font-semibold" x-text="card.city"></div>
+                      <div class="text-xs text-slate-500 dark:text-slate-400" x-text="card.summary"></div>
+                      <div class="text-sm font-mono text-slate-700 dark:text-slate-200 mt-1">PM2.5: <span x-text="card.pm || '—'"></span></div>
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+      <section class="md:col-span-2 relative rounded-xl overflow-hidden">
+        <img :src="forestSrc" id="forestImage" alt="Forest" class="w-full h-96 object-cover transition duration-500" :class="forestClasses">
+
+        <div class="absolute left-6 top-6">
+          <div class="glass p-4 rounded-lg shadow-lg max-w-xs">
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <div class="text-xs text-slate-400">Current Prediction</div>
+                <div class="text-2xl font-semibold">
+                  <span x-text="predictionDisplay"></span>
+                </div>
+                <div class="text-sm text-slate-500 mt-1" x-text="predictionLabel"></div>
+              </div>
+              <div class="flex flex-col items-end">
+                <div class="text-xs text-slate-400">Updated</div>
+                <div class="text-sm font-mono" x-text="lastUpdated"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div aria-hidden="true" :class="moodOverlayClass" class="absolute inset-0 pointer-events-none transition-opacity duration-500"></div>
+      </section>
+
+      <aside class="md:col-span-1 space-y-4">
+        <div class="glass p-4 rounded-xl shadow">
+          <div class="font-semibold mb-2">Overview</div>
+          <div class="text-sm text-slate-500">Lay Htu uses an LSTM model (via Python bridge) to predict near-future PM2.5 based on the last 24 readings.</div>
+        </div>
+
+        <div class="glass p-4 rounded-xl shadow">
+          <div class="font-semibold mb-2">Status</div>
+          <div class="text-sm text-slate-600 dark:text-slate-300" x-text="statusMessage"></div>
+          <div class="mt-3">
+            <button @click="fetchPrediction()" class="px-3 py-2 rounded-md bg-sky-600 text-white text-sm">Refresh prediction</button>
+          </div>
+        </div>
+
+        <div class="glass p-4 rounded-xl shadow">
+          <div class="font-semibold mb-2">Cities quick view</div>
+          <template x-for="c in cards" :key="c.city">
+            <div class="flex items-center justify-between text-sm py-1">
+              <div x-text="c.city"></div>
+              <div class="font-mono" x-text="c.pm ? c.pm + ' μg/m³' : '—'"></div>
+            </div>
+          </template>
+        </div>
+      </aside>
+    </main>
+
+    <!-- Chat fixed bottom bar -->
+    <div class="fixed left-4 right-4 bottom-6 z-50 flex justify-center">
+      <div class="w-full max-w-xl">
+        <div class="flex items-center justify-between p-3 rounded-full glass shadow-lg cursor-pointer" @click="openChat = true" role="button" aria-label="Open Chatbot">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-900 flex items-center justify-center text-emerald-700 dark:text-emerald-200">💬</div>
+            <div class="text-sm">
+              <div class="font-semibold">လေထု AI Chatbot ကို နှိပ်ပြီး မေးမြန်းပါ</div>
+              <div class="text-xs text-slate-500">Ask about today's air quality or health tips</div>
+            </div>
+          </div>
+          <div class="text-xs text-slate-400">Tap to chat</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chat Modal -->
+    <div x-show="openChat" x-cloak class="fixed inset-0 z-50 flex items-end md:items-center justify-center" aria-modal="true" role="dialog">
+      <div class="absolute inset-0 modal-backdrop" @click="openChat = false" aria-hidden="true"></div>
+
+      <div x-transition class="relative w-full max-w-2xl mx-4 mb-6 md:mb-0">
+        <div class="glass rounded-xl shadow-lg overflow-hidden">
+          <div class="p-4 flex items-center justify-between">
+            <div class="font-semibold">လေထု AI Chatbot</div>
+            <button @click="openChat = false" aria-label="Close chat" class="text-slate-500 hover:text-slate-700 dark:hover:text-slate-200">✕</button>
+          </div>
+          <div class="p-4 border-t border-white/5">
+            <div class="text-sm text-slate-500 mb-3">This demo chat is a placeholder. Integrate your chatbot backend here.</div>
+            <div class="grid grid-cols-12 gap-2">
+              <input x-model="chatInput" type="text" placeholder="Type your question..." class="col-span-10 p-2 rounded-md border bg-white/5 focus:outline-none" />
+              <button @click="sendChat()" class="col-span-2 rounded-md bg-sky-600 text-white p-2">Send</button>
+            </div>
+            <div class="mt-4 text-xs text-slate-400">Example: "ဘယ်ရက်တွေမှာ PM2.5 ပိုဆိုးမလဲ?"</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    function layHtuApp() {
+      return {
+        theme: localStorage.getItem('layhtu-theme') || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'),
+        openSettings: false,
+
+        cards: [
+          { city: 'Yangon', summary: 'Urban centre', pm: null },
+          { city: 'Mandalay', summary: 'Inland region', pm: null },
+          { city: 'Naypyidaw', summary: 'Capital area', pm: null }
+        ],
+        tickerIndex: 0,
+        visibleCount: 1,
+
+        prediction: null,
+        lastUpdated: '--',
+        statusMessage: 'Loading…',
+        forestSrc: 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=1400&q=60',
+        chatInput: '',
+        openChat: false,
+
+        get predictionDisplay() {
+          if (this.prediction === null) return '—';
+          return `${this.prediction.toFixed(1)} μg/m³`;
+        },
+
+        get forestClasses() {
+          const pm = this.prediction;
+          if (pm === null) return '';
+          if (pm <= 35.4) return 'filter-none';
+          if (pm <= 55.4) return 'filter grayscale-0';
+          return 'filter grayscale contrast-75';
+        },
+
+        get moodOverlayClass() {
+          const pm = this.prediction;
+          if (pm === null) return 'opacity-0';
+          if (pm <= 12) return 'opacity-0';
+          if (pm <= 35.4) return 'opacity-10 bg-yellow-200/20';
+          if (pm <= 55.4) return 'opacity-30 bg-orange-600/15';
+          return 'opacity-40 bg-red-700/20';
+        },
+
+        get predictionLabel() {
+          const pm = this.prediction;
+          if (pm === null) return '';
+          if (pm <= 12) return 'Good';
+          if (pm <= 35.4) return 'Moderate';
+          if (pm <= 55.4) return 'Unhealthy for Sensitive Groups';
+          return 'Unhealthy';
+        },
+
+        init() {
+          this.applyTheme();
+
+          setInterval(() => { this.tickerIndex = (this.tickerIndex + 1) % this.cards.length; }, 3500);
+          this.fetchPrediction();
+          setInterval(() => this.fetchPrediction(), 60_000);
+          setInterval(() => this._updateMockCityPm(), 15000);
+          this._updateMockCityPm();
+        },
+
+        setTheme(t) {
+          this.theme = t;
+          localStorage.setItem('layhtu-theme', t);
+          this.applyTheme();
+        },
+
+        applyTheme() {
+          if (this.theme === 'dark') document.documentElement.classList.add('dark'); else document.documentElement.classList.remove('dark');
+        },
+
+        async fetchPrediction() {
+          this.statusMessage = 'Fetching prediction...';
+          try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 18_000);
+            const res = await fetch('/api/v1/weather/predict', { signal: controller.signal, headers: { 'Accept': 'application/json' } });
+            clearTimeout(timeout);
+            if (!res.ok) { this._onFetchError(); return; }
+            const data = await res.json();
+            if (data && typeof data.prediction === 'number') {
+              this.prediction = data.prediction;
+              this.lastUpdated = new Date().toLocaleTimeString();
+              this.statusMessage = 'Prediction updated';
+            } else {
+              this._onFetchError();
+            }
+          } catch (err) {
+            this._onFetchError(err);
+          }
+        },
+
+        _onFetchError(err) {
+          if (err) console.warn('Fetch prediction error:', err);
+          if (this.prediction === null) this.statusMessage = 'Data gathering in progress...'; else this.statusMessage = 'Prediction temporarily unavailable';
+        },
+
+        _updateMockCityPm() { this.cards = this.cards.map(c => ({ ...c, pm: Math.round(8 + Math.random() * 60) })); },
+
+        sendChat() { if (!this.chatInput.trim()) return; alert('Chatbot demo: ' + this.chatInput); this.chatInput = ''; }
+      };
+    }
+  </script>
+</body>
+</html>
