@@ -1,0 +1,56 @@
+myanmar-air-pollution-app/
+│
+├── frontend/                           # UI Layer (HTML/CSS/JavaScript)
+│   ├── index.html                      # Main dashboard & chatbox layout
+│   ├── css/
+│   │   └── style.css                   # Custom styling, slide cards, chat bubbles
+│   └── js/
+│       ├── main.js                     # Main controller orchestration
+│       ├── dashboard.js                # Fetches live data & updates top slide cards
+│       └── chatbox.js                  # Handles chat rendering & WebSockets/SSE stream
+│
+├── backend-springboot/                 # Core Orchestrator (Java Spring Boot)
+│   ├── pom.xml                         # Maven dependencies (Spring Data Mongo, WebClient)
+│   └── src/
+│       └── main/
+│           ├── java/com/project/airpollution/
+│           │   ├── AirPollutionApplication.java   # Main entry point
+│           │   │
+│           │   ├── config/             # App Configurations
+│           │   │   └── CorsConfig.java            # Configures CORS allowed origins
+│           │   │
+│           │   ├── controller/         # REST API Endpoints
+│           │   │   ├── DashboardController.java   # Exposes endpoint for top slide cards
+│           │   │   └── ChatController.java        # Exposes endpoint for Gemini chatbox
+│           │   │
+│           │   ├── model/              # MongoDB Document Entities & Sub-documents
+│           │   │   ├── ChatSession.java           # Main chat session doc
+│           │   │   ├── ChatMessage.java           # Nested chat message object
+│           │   │   └── PollutionData.java         # Logged live metrics
+│           │   │
+│           │   ├── repository/         # Spring Data MongoDB Repositories
+│           │   │   └── ChatSessionRepository.java
+│           │   │
+│           │   └── service/            # Core Business Logic & API Aggregation
+│           │       ├── WeatherApiService.java     # Connects to OpenWeather API
+│           │       ├── GeminiAgentService.java    # Connects to Gemini 2.5 Flash API
+│           │       ├── PredictionService.java     # Connects to Python AI model service
+│           │       └── ChatService.java           # Manages history & processes queries
+│           │
+│           └── resources/
+│               └── application.properties         # API Keys, MongoDB URI, Server Port
+│
+└── ai-python-service/                  # Machine Learning Layer (Python)
+    ├── requirements.txt                # Dependencies (fastapi, uvicorn, pandas, tensorflow)
+    ├── run.py                          # Application launcher script
+    │
+    └── app/
+        ├── main.py                     # FastAPI server script & endpoints
+        ├── model_loader.py             # Logic to load saved weights/scalers
+        ├── predictor.py                # Preprocesses inputs & runs model inference
+        │
+        ├── models/                     # Saved Pre-trained AI Models
+        │   └── pollution_model.pkl     # Your custom model file (LSTM / Random Forest)
+        │
+        └── notebooks/                  # Local training & exploration workspace
+            └── model_training.ipynb    # Jupyter Notebook for historical training
