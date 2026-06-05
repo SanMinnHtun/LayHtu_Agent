@@ -10,46 +10,13 @@
     window.tailwind = { config: { darkMode: 'class' } };
   </script>
   <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/css/style.css" />
 
-  <!-- Alpine.js -->
+  <!-- App modules must load before Alpine initializes x-data. -->
+  <script defer src="/js/api.js"></script>
+  <script defer src="/js/renderers.js"></script>
+  <script defer src="/js/app.js"></script>
   <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
-
-  <style>
-    :root {
-      --forest-src: url('https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=1400&q=60');
-    }
-
-    .glass {
-      background: rgba(255,255,255,0.06);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
-      border: 1px solid rgba(255,255,255,0.06);
-    }
-    .glass-dark {
-      background: rgba(10,10,10,0.36);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
-      border: 1px solid rgba(255,255,255,0.03);
-    }
-
-    .ticker-track { display:flex; gap:1rem; transition: transform 0.6s cubic-bezier(.22,.9,.3,1); }
-
-    .modal-backdrop { background: rgba(0,0,0,0.45); backdrop-filter: blur(3px); }
-
-    /* Spinner */
-    .spinner {
-      width: 1rem;
-      height: 1rem;
-      border: 2px solid transparent;
-      border-top-color: currentColor;
-      border-radius: 50%;
-      animation: spin 0.6s linear infinite;
-    }
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-  </style>
 </head>
 <body class="min-h-screen text-slate-900 dark:text-slate-100">
   <div class="max-w-6xl mx-auto p-4 sm:p-6">
@@ -86,7 +53,7 @@
         </div>
       </div>
 
-      <div class="mt-4 text-xs text-slate-400">Tip: Change the main forest image by editing the <code>forestSrc</code> variable in the script.</div>
+      <div class="mt-4 text-xs text-slate-400">Tip: Change the main forest image by editing the <code>forestSrc</code> value in <code>/js/app.js</code>.</div>
     </div>
 
     <!-- Top slider / ticker -->
@@ -97,18 +64,18 @@
           <div class="text-xs text-slate-400">Auto-updates every minute</div>
         </div>
 
-        <div class="w-full overflow-hidden">
-          <div class="ticker-track" :style="`transform: translateX(-${tickerIndex * 100}%) ; width: ${cards.length * 100}%`">
+        <div class="ticker-viewport w-full overflow-hidden">
+          <div class="ticker-track" :style="`transform: translateX(-${tickerIndex * 100}%)`">
             <template x-for="(card, idx) in cards" :key="card.city">
-              <div class="min-w-full p-3">
-                <div class="glass p-4 rounded-xl shadow-sm flex items-center gap-3">
+              <div class="ticker-slide">
+                <div class="ticker-card glass p-4 rounded-xl shadow-sm flex items-center gap-3">
                   <div class="w-12 h-12 rounded-lg bg-emerald-100 dark:bg-emerald-900 flex items-center justify-center text-emerald-700 dark:text-emerald-200 font-bold">
                     <span x-text="card.city.charAt(0)"></span>
                   </div>
                   <div>
                     <div class="font-semibold" x-text="card.city"></div>
                     <div class="text-xs text-slate-500 dark:text-slate-400" x-text="card.summary"></div>
-                    <div class="text-sm font-mono text-slate-700 dark:text-slate-200 mt-1">PM2.5: <span x-text="card.pm ?? '—'"></span></div>
+                    <div class="text-sm font-mono text-slate-700 dark:text-slate-200 mt-1">PM2.5: <span x-text="cityPmLabel(card.pm)"></span></div>
                   </div>
                 </div>
               </div>
@@ -121,7 +88,7 @@
     <!-- Main Content -->
     <main class="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
       <section class="md:col-span-2 relative rounded-xl overflow-hidden">
-        <!-- Forest image; easy to swap: change the `forestSrc` variable in the script -->
+        <!-- Forest image; easy to swap through the forestSrc value in /js/app.js -->
         <img :src="forestSrc" id="forestImage" alt="Forest" class="w-full h-96 object-cover transition duration-500" :class="forestClasses">
 
         <!-- Prediction card overlay -->
@@ -172,7 +139,7 @@
           <template x-for="c in cards" :key="c.city">
             <div class="flex items-center justify-between text-sm py-1">
               <div x-text="c.city"></div>
-              <div class="font-mono" x-text="c.pm ? c.pm + ' μg/m³' : '—'"></div>
+              <div class="font-mono" x-text="cityPmLabel(c.pm)"></div>
             </div>
           </template>
         </div>
@@ -219,152 +186,5 @@
 
   </div>
 
-  <script>
-    function layHtuApp() {
-      return {
-        theme: localStorage.getItem('layhtu-theme') || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'),
-        openSettings: false,
-
-        // dynamic city cards will be fetched from backend
-        cards: [],
-        tickerIndex: 0,
-
-        prediction: null,
-        lastUpdated: '--',
-        statusMessage: 'Loading…',
-        forestSrc: 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=1400&q=60',
-        chatInput: '',
-        openChat: false,
-        loadingPrediction: false,
-
-        get predictionDisplay() {
-          if (this.prediction === null) return '—';
-          return `${this.prediction.toFixed(1)} μg/m³`;
-        },
-
-        get forestClasses() {
-          const pm = this.prediction;
-          if (pm === null) return '';
-          if (pm <= 35.4) return 'filter-none';
-          if (pm <= 55.4) return 'filter grayscale-0';
-          return 'filter grayscale contrast-75';
-        },
-
-        get moodOverlayClass() {
-          const pm = this.prediction;
-          if (pm === null) return 'opacity-0';
-          if (pm <= 12) return 'opacity-0';
-          if (pm <= 35.4) return 'opacity-10 bg-yellow-200/20';
-          if (pm <= 55.4) return 'opacity-30 bg-orange-600/15';
-          return 'opacity-40 bg-red-700/20';
-        },
-
-        get predictionLabel() {
-          const pm = this.prediction;
-          if (pm === null) return '';
-          if (pm <= 12) return 'Good';
-          if (pm <= 35.4) return 'Moderate';
-          if (pm <= 55.4) return 'Unhealthy for Sensitive Groups';
-          return 'Unhealthy';
-        },
-
-        init() {
-          // apply theme and update CSS vars
-          this.applyTheme();
-
-          // start ticker autoplay
-          setInterval(() => {
-            if (this.cards.length > 0) this.tickerIndex = (this.tickerIndex + 1) % this.cards.length;
-          }, 3500);
-
-          // initial load
-          this.fetchAllCities();
-          this.fetchPrediction();
-
-          // periodic refresh
-          setInterval(() => this.fetchAllCities(), 60_000);
-          setInterval(() => this.fetchPrediction(), 60_000);
-        },
-
-        setTheme(t) {
-          this.theme = t;
-          localStorage.setItem('layhtu-theme', t);
-          this.applyTheme();
-        },
-
-        applyTheme() {
-          if (this.theme === 'dark') {
-            document.documentElement.classList.add('dark');
-            document.documentElement.style.setProperty('--bg-from', '#0f172a');
-            document.documentElement.style.setProperty('--bg-to', '#071133');
-            document.documentElement.style.setProperty('--card-bg', 'rgba(10,10,10,0.36)');
-            document.documentElement.style.setProperty('--card-border', 'rgba(255,255,255,0.03)');
-          } else {
-            document.documentElement.classList.remove('dark');
-            document.documentElement.style.setProperty('--bg-from', '#ecfdf5');
-            document.documentElement.style.setProperty('--bg-to', '#eef2ff');
-            document.documentElement.style.setProperty('--card-bg', 'rgba(255,255,255,0.06)');
-            document.documentElement.style.setProperty('--card-border', 'rgba(255,255,255,0.06)');
-          }
-        },
-
-        // Fetch slider/city data from backend
-        async fetchAllCities() {
-          try {
-            const res = await fetch('/api/v1/weather/cities', { headers: { 'Accept': 'application/json' } });
-            if (!res.ok) throw new Error('Cities endpoint not available');
-            const data = await res.json();
-            if (Array.isArray(data) && data.length > 0) {
-              this.cards = data.map(c => ({ city: c.city || 'Unknown', summary: c.summary || '', pm: c.pm ?? null }));
-              this.statusMessage = 'City data updated';
-              return;
-            }
-            throw new Error('Invalid city data');
-          } catch (err) {
-            console.warn('fetchAllCities failed, using demo data', err);
-            this.cards = [
-              { city: 'Yangon', summary: 'Urban centre', pm: Math.round(12 + Math.random() * 30) },
-              { city: 'Mandalay', summary: 'Inland region', pm: Math.round(10 + Math.random() * 35) },
-              { city: 'Naypyidaw', summary: 'Capital area', pm: Math.round(8 + Math.random() * 28) }
-            ];
-            this.statusMessage = 'City data (demo)';
-          }
-        },
-
-        // Primary prediction call
-        async fetchPrediction() {
-          this.loadingPrediction = true;
-          this.statusMessage = 'Calculating AI Prediction...';
-          try {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 19_000);
-            const res = await fetch('/api/v1/weather/predict', { signal: controller.signal, headers: { 'Accept': 'application/json' } });
-            clearTimeout(timeout);
-            if (!res.ok) { this._onFetchError(); return; }
-            const data = await res.json();
-            if (data && typeof data.prediction === 'number') {
-              this.prediction = data.prediction;
-              this.lastUpdated = new Date().toLocaleTimeString();
-              this.statusMessage = 'Prediction updated';
-            } else {
-              this._onFetchError();
-            }
-          } catch (err) {
-            console.warn('fetchPrediction error', err);
-            this._onFetchError(err);
-          } finally {
-            this.loadingPrediction = false;
-          }
-        },
-
-        _onFetchError(err) {
-          if (err) console.warn('Fetch prediction error:', err);
-          if (this.prediction === null) this.statusMessage = 'Data gathering in progress...'; else this.statusMessage = 'Prediction temporarily unavailable';
-        },
-
-        sendChat() { if (!this.chatInput.trim()) return; alert('Chatbot demo: ' + this.chatInput); this.chatInput = ''; }
-      };
-    }
-  </script>
 </body>
 </html>
